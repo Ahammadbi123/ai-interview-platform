@@ -2,3 +2,4 @@ flask
 flask-mail
 mysql-connector-python
 itsdangerous
+gunicorn
