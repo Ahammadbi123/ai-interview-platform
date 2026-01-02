@@ -26,21 +26,16 @@ def register():
         name = request.form['name']
         email = request.form['email']
         password = request.form['password']
-        confirm = request.form['confirm_password']
-
-        if password != confirm:
-            return "Password not matching"
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
         cursor.execute(
-            "INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
+            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
             (name, email, password)
         )
-        conn.commit()
 
-        cursor.close()
+        conn.commit()
         conn.close()
 
         return redirect('/login')
