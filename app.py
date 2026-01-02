@@ -1,142 +1,110 @@
-from flask import Flask, render_template, request,redirect
-from db import get_db_connection
-from flask_mail import Mail, Message
-from itsdangerous import URLSafeTimedSerializer
-
+from flask import Flask, render_template, request, redirect, url_for
+import sqlite3
+import os
 
 app = Flask(__name__)
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'sj448371@gmail.com'
-app.config['MAIL_PASSWORD'] = 'eoalmniuozcqmamz'
-app.config['MAIL_DEFAULT_SENDER'] = 'sj448371@gmail.com'
 
-mail = Mail(app)
-serializer = URLSafeTimedSerializer('secret-key')
+# =========================
+# DATABASE FUNCTION
+# =========================
+def get_db():
+    conn = sqlite3.connect("database.db", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-@app.route('/')
-def home():
-    return render_template('home.html')
-
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        password = request.form['password']
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-            (name, email, password)
+# =========================
+# INIT DATABASE
+# =========================
+def init_db():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
         )
+    """)
+    conn.commit()
+    conn.close()
 
-        conn.commit()
-        conn.close()
+init_db()
 
-        return redirect('/login')
+# =========================
+# HOME
+# =========================
+@app.route("/")
+def home():
+    return "AI Interview Platform Running Successfully 🚀"
 
-    return render_template('register.html')
+# =========================
+# REGISTER
+# =========================
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
 
-
-from flask import redirect
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-
-        conn = get_db_connection()
+        conn = get_db()
         cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO users (email, password) VALUES (?, ?)",
+                (email, password)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            return "Email already exists"
+        finally:
+            conn.close()
 
+        return redirect(url_for("login"))
+
+    return """
+    <h2>Register</h2>
+    <form method="post">
+        <input type="email" name="email" placeholder="Email" required><br><br>
+        <input type="password" name="password" placeholder="Password" required><br><br>
+        <button type="submit">Register</button>
+    </form>
+    """
+
+# =========================
+# LOGIN
+# =========================
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+
+        conn = get_db()
+        cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM users WHERE email=%s AND password=%s",
+            "SELECT * FROM users WHERE email=? AND password=?",
             (email, password)
         )
         user = cursor.fetchone()
-
-        cursor.close()
         conn.close()
 
         if user:
-            return redirect('/dashboard')
+            return "Login Successful ✅"
         else:
-            return "Invalid Email or Password"
+            return "Invalid Credentials ❌"
 
-    return render_template('login.html')
+    return """
+    <h2>Login</h2>
+    <form method="post">
+        <input type="email" name="email" placeholder="Email" required><br><br>
+        <input type="password" name="password" placeholder="Password" required><br><br>
+        <button type="submit">Login</button>
+    </form>
+    """
 
-@app.route('/forgot-password', methods=['GET', 'POST'])
-def forgot_password():
-    if request.method == 'POST':
-        email = request.form['email']
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        if not user:
-            return "Email not registered"
-
-        token = serializer.dumps(email, salt='password-reset')
-        reset_link = f"https://lardaceous-oleta-subformative.ngrok-free.dev/reset-password/{token}"
-
-        msg = Message(
-            subject="Password Reset Request",
-            recipients=[email],
-            body=f"""You requested a password reset.
-
-Click the link below to reset your password:
-{reset_link}
-
-This link is valid for 10 minutes.
-"""
-        )
-
-        mail.send(msg)
-
-        return "Reset link sent to your email"
-
-    return render_template('forgot_password.html')
-@app.route('/reset-password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    try:
-        email = serializer.loads(
-            token,
-            salt='password-reset',
-            max_age=600
-        )
-    except:
-        return "Reset link expired or invalid"
-
-    if request.method == 'POST':
-        password = request.form['password']
-        confirm = request.form['confirm']
-
-        if password != confirm:
-            return "Passwords do not match"
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET password=%s WHERE email=%s",
-            (password, email)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return redirect('/login')
-
-    return render_template('reset_password.html')
-
-
+# =========================
+# RENDER ENTRY POINT
+# =========================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
+
